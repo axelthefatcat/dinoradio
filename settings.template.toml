@@ -1,0 +1,63 @@
+# Dino's Radio settings
+# Edit with:  dinoradio settings      (it offers to restart the station afterwards)
+# Lines starting with # are notes. Text goes in "quotes", numbers and true/false don't.
+
+[station]
+name = "@STATION@"                # what the DJ calls the station
+stream_mount = "@MOUNT@"          # the end of the stream address - like a password, keep it private
+bitrate = 128                     # MP3 quality in kbps (128 is plenty for an Echo; 192 for hi-fi)
+icecast_password = "@PASSWORD@"   # must match Icecast's source password - leave alone
+
+[music]
+folder = "@FOLDER@"               # the music, on the NAS share
+rescan_minutes = 15               # how often it looks for new or changed music
+full_rescan_hour = 4              # once a day at this hour it checks every file (catches edited tags)
+min_seconds = 60                  # skip anything shorter (intros, jingles)...
+max_seconds = 720                 # ...or longer than 12 minutes
+exclude_genres = []               # genres never to play, e.g. ["Classical", "Spoken Word"]
+christmas_songs = "december"      # "december" (1-31 Dec only), "always" or "never"
+
+[mix]
+# How often each kind of song is chosen (they don't have to add up to 100)
+top10_percent = 50                # songs that reached the top 10 in the UK or US
+chart_percent = 35                # songs that charted at 11-100
+other_percent = 15                # album tracks and songs that didn't chart
+song_repeat_hours = 72            # the same song won't play again within this many hours
+artist_gap = 15                   # an artist won't play again within this many songs
+
+[dj]
+enabled = true
+voice = "en_GB-cori-medium"
+# Chance (%) the DJ introduces the next song...
+top10_chance = 100                # ...when it was a top 10 hit
+chart_chance = 50                 # ...when it charted at 11-100
+other_chance = 17                 # ...for anything else (about 1 in 6)
+max_in_a_row = 2                  # never talks before more than this many songs in a row
+at_least_every = 8                # always says something at least every this many songs
+back_announce_chance = 40         # % of links that also say what just played
+station_ident_chance = 20         # % of links that mention the station name
+talk_delay_seconds = 2            # the DJ starts this long after the song begins
+duck_percent = 25                 # music volume (%) while the DJ talks
+voice_volume = 1.4                # DJ loudness (1.0 = as recorded)
+
+[sound]
+crossfade_seconds = 4             # songs blend into each other over this many seconds
+levelling = true                  # evens out the volume between loud and quiet recordings
+target_lufs = -16                 # the loudness it levels to
+
+[charts]
+enabled = true                    # look up chart positions on Wikipedia
+contact_email = "@EMAIL@"         # Wikipedia asks apps to give a contact (optional)
+
+[standby]
+check_seconds = 30                # how often it checks the NAS is there
+folder = "@STANDBY@"   # the tracks it plays when the NAS isn't there
+message_every = 3                 # the "please hold" message every this many standby tracks
+
+[backup]
+folder = "@BACKUP@"   # nightly backups (blank = on the SD card only)
+hour = 3                          # the hour it backs up each night
+keep = 7                          # how many nightly backups to keep
+
+[web]
+port = 8080                       # the status page: http://<the Pi>:8080  (0 turns it off)

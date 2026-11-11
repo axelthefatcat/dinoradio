@@ -1,0 +1,19 @@
+[Unit]
+Description=Dino's Radio (music choice, DJ, charts, standby and the audio stream)
+After=network-online.target remote-fs.target icecast2.service
+Wants=network-online.target icecast2.service
+
+[Service]
+User=dinoradio
+Group=dinoradio
+WorkingDirectory=/opt/dinoradio
+ExecStart=/usr/bin/python3 -m dinoradio.brain
+Environment=PYTHONUNBUFFERED=1
+RuntimeDirectory=dinoradio
+RuntimeDirectoryMode=0755
+Restart=always
+RestartSec=5
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target
