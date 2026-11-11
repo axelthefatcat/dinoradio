@@ -141,7 +141,8 @@ An Echo needs an **HTTPS** address for a stream. Put a reverse proxy in front of
 Icecast. A Synology NAS can do this in **Control Panel › Login Portal › Advanced › Reverse
 Proxy**, sending `https://radio.your-domain` to `http://<the Pi>:8000`. Then use
 `https://radio.your-domain/<stream mount>` as the stream URL in a simple Alexa skill (an
-AudioPlayer skill that plays one stream).
+AudioPlayer skill that plays one stream). There's a step-by-step guide, with the skill code, at
+[echo-home-stream](https://github.com/axelthefatcat/echo-home-stream).
 
 The stream mount (`radio-…`) is random and works like a password, so keep it private. Don't
 put the status page (port 8080) on the internet. It has no login and is meant for your home
