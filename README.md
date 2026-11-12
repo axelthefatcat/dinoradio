@@ -82,6 +82,7 @@ Open **`http://<the Pi>:8080`** in any browser on your network for the status pa
 | `dinoradio fill-standby 25` | Copy 25 more songs to the standby folder |
 | `dinoradio backup` | Back up now |
 | `dinoradio settings` | Edit the settings, then restart |
+| `update-radio` | Update to the latest version from GitHub |
 | `dinoradio log` | Watch what it's doing (Ctrl+C to stop) |
 | `dinoradio stream` | Show the stream address |
 
@@ -92,14 +93,19 @@ and offers to restart afterwards.
 
 ## Updating
 
-Over SSH on the Pi:
+Over SSH on the Pi, from any folder:
 
 ```bash
-cd ~
-rm -rf dinoradio-main
+update-radio
+```
+
+It downloads the latest version from GitHub and runs the installer. An install from before
+`update-radio` existed needs updating the long way once:
+
+```bash
+cd ~ && rm -rf dinoradio-main
 curl -L https://github.com/axelthefatcat/dinoradio/archive/refs/heads/main.tar.gz | tar xz
-cd dinoradio-main
-sudo bash install.sh
+cd dinoradio-main && sudo bash install.sh
 ```
 
 The installer recognises an existing station and doesn't ask its questions again. Your

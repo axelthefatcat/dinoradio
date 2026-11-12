@@ -94,7 +94,20 @@ cat > /usr/local/bin/dinoradio <<'EOF'
 cd /opt/dinoradio && exec python3 -m dinoradio.cli "$@"
 EOF
 chmod 755 /usr/local/bin/dinoradio
-ok "Program installed in $APP"
+cat > /usr/local/bin/update-radio <<'UPDATER'
+#!/bin/bash
+# Updates Dino's Radio to the latest version on GitHub. Settings, charts, levels and backups are kept.
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+echo "Downloading the latest Dino's Radio from GitHub..."
+curl -fsSL https://github.com/axelthefatcat/dinoradio/archive/refs/heads/main.tar.gz | tar xz -C "$TMP"
+cd "$TMP/dinoradio-main"
+bash install.sh "$@"
+UPDATER
+chmod 755 /usr/local/bin/update-radio
+ok "Program installed in $APP  (update it any time with: update-radio)"
 
 # ---------------------------------------------------------------- the DJ voice
 say "The DJ voice (Piper)"

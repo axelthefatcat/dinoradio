@@ -20,6 +20,7 @@ HELP = """Dino's Radio
   dinoradio backup          Back up now (it also does this every night)
   dinoradio settings        Edit the settings, then restart to use them
   dinoradio restart         Restart the station
+  dinoradio update          Update to the latest version from GitHub (same as: update-radio)
   dinoradio log             Watch the station's log (Ctrl+C to stop)
   dinoradio stream          Show the stream address for players and Alexa
 """
@@ -86,6 +87,8 @@ def main():
             restart()
     elif cmd == "restart":
         restart()
+    elif cmd == "update":
+        os.execvp("sudo", ["sudo", "/usr/local/bin/update-radio"] + args[1:])
     elif cmd == "log":
         os.execvp("journalctl", ["journalctl", "-f", "-n", "50", "-u", "dinoradio"])
     elif cmd == "fill-standby":
