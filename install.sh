@@ -130,18 +130,21 @@ else
     SET_VOICE=$(sed -n '/^\[dj\]/,/^\[/ s/^voice *= *"\([^"]*\)".*/\1/p' "$ETC/settings.toml" | head -1)
     [ -n "$SET_VOICE" ] && VOICE="$SET_VOICE"
   fi
+  # The chosen voice, plus the standard one as a fall-back if the chosen one is too slow for this Pi.
   # en_GB-cori-high  ->  en/en_GB/cori/high/en_GB-cori-high.onnx
-  if [[ "$VOICE" =~ ^(([a-z]+)_[A-Z]+)-([a-z0-9_]+)-(x_low|low|medium|high)$ ]]; then
-    VOICE_PATH="${BASH_REMATCH[2]}/${BASH_REMATCH[1]}/${BASH_REMATCH[3]}/${BASH_REMATCH[4]}"
-  else
-    die "the voice \"$VOICE\" in the settings isn't a Piper voice name (like en_GB-cori-high)"
-  fi
-  for ext in onnx onnx.json; do
-    if [ ! -s "$APP/voices/$VOICE.$ext" ]; then
-      curl -fsSL "$VOICES_URL/$VOICE_PATH/$VOICE.$ext?download=true" -o "$APP/voices/$VOICE.$ext.part" \
-        || die "couldn't download the $VOICE voice from huggingface.co"
-      mv "$APP/voices/$VOICE.$ext.part" "$APP/voices/$VOICE.$ext"
+  for V in "$VOICE" en_GB-cori-medium; do
+    if [[ "$V" =~ ^(([a-z]+)_[A-Z]+)-([a-z0-9_]+)-(x_low|low|medium|high)$ ]]; then
+      VOICE_PATH="${BASH_REMATCH[2]}/${BASH_REMATCH[1]}/${BASH_REMATCH[3]}/${BASH_REMATCH[4]}"
+    else
+      die "the voice \"$V\" in the settings isn't a Piper voice name (like en_GB-cori-high)"
     fi
+    for ext in onnx onnx.json; do
+      if [ ! -s "$APP/voices/$V.$ext" ]; then
+        curl -fsSL "$VOICES_URL/$VOICE_PATH/$V.$ext?download=true" -o "$APP/voices/$V.$ext.part" \
+          || die "couldn't download the $V voice from huggingface.co"
+        mv "$APP/voices/$V.$ext.part" "$APP/voices/$V.$ext"
+      fi
+    done
   done
   if echo "Testing, testing." | LD_LIBRARY_PATH="$APP/piper" "$APP/piper/piper" --model "$APP/voices/$VOICE.onnx" \
        --output_file /tmp/dj-test.wav >/dev/null 2>&1 && [ -s /tmp/dj-test.wav ]; then

@@ -5,7 +5,7 @@
 [station]
 name = "@STATION@"                # what the DJ calls the station
 stream_mount = "@MOUNT@"          # the end of the stream address - like a password, keep it private
-bitrate = 128                     # MP3 quality in kbps (128 is plenty for an Echo; 192 for hi-fi)
+bitrate = 192                     # MP3 quality in kbps (128 is plenty for an Echo Dot; 192 sounds better on bigger speakers)
 icecast_password = "@PASSWORD@"   # must match Icecast's source password - leave alone
 
 [music]

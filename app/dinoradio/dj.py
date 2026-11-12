@@ -1,11 +1,14 @@
 """The DJ: decides when to talk, writes what to say, and turns it into speech with Piper."""
 import glob
 import hashlib
+import json
 import logging
 import os
+import queue
 import random
 import re
 import subprocess
+import threading
 import time
 
 from . import names
@@ -68,6 +71,77 @@ def chart_name(c: str) -> str:
     return "the UK singles chart" if c == "UK" else "the Billboard Hot 100"
 
 
+FALLBACK_VOICE = "en_GB-cori-medium"
+
+
+class Piper:
+    """One Piper process kept running, so the voice is loaded once rather than for every line
+    (loading a voice is most of the work on a small Pi)."""
+
+    def __init__(self):
+        self.proc = None
+        self.model = None
+        self.lock = threading.Lock()
+        self.lines = queue.Queue()
+        self.last_error = ""
+
+    def _start(self, model):
+        self.stop()
+        env = dict(os.environ, LD_LIBRARY_PATH=os.path.dirname(PIPER))
+        self.proc = subprocess.Popen(
+            ["nice", "-n", "10", PIPER, "--model", model, "--json-input", "--sentence_silence", "0.3", "--quiet"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+        self.model = model
+        self.lines = queue.Queue()
+        out, q = self.proc.stdout, self.lines
+
+        def read():
+            for line in iter(out.readline, b""):
+                q.put(line.decode("utf-8", "replace").strip())
+            q.put(None)
+        threading.Thread(target=read, daemon=True, name="piper-out").start()
+
+    def stop(self):
+        if self.proc is not None:
+            try:
+                self.proc.kill()
+            except OSError:
+                pass
+        self.proc = None
+
+    def say(self, model, text, out, timeout=None):
+        with self.lock:
+            first = self.proc is None or self.proc.poll() is not None or self.model != model
+            if first:
+                self._start(model)
+            # the first line also loads the voice, so it gets longer
+            timeout = timeout or (300 if first else 180)
+            tmp = out + ".part.wav"
+            try:
+                self.proc.stdin.write((json.dumps({"text": text, "output_file": tmp}) + "\n").encode("utf-8"))
+                self.proc.stdin.flush()
+                deadline = time.time() + timeout
+                while True:
+                    line = self.lines.get(timeout=max(0.1, deadline - time.time()))
+                    if line is None:
+                        raise OSError("Piper stopped")
+                    if line.endswith(".part.wav"):
+                        break
+            except queue.Empty:
+                self.last_error = f"took longer than {timeout} seconds"
+                self.stop()
+                return False
+            except OSError as e:
+                self.last_error = str(e)
+                self.stop()
+                return False
+            if not os.path.exists(tmp) or os.path.getsize(tmp) < 1000:
+                self.last_error = "no audio came back"
+                return False
+            os.replace(tmp, out)
+            return True
+
+
 STANDBY_LINES = [
     "Sorry about this. {station} is having a little trouble reaching the record library at the moment. "
     "Please hold, and we'll be back as soon as we can.",
@@ -84,6 +158,11 @@ class DJ:
         self.songs_since_talk = 99         # talk early on
         self.talked_in_a_row = 0
         self.model = os.path.join(APP_DIR, "voices", f"{settings.voice}.onnx")
+        self.fallback = os.path.join(APP_DIR, "voices", f"{FALLBACK_VOICE}.onnx")
+        if not os.path.exists(self.model) and os.path.exists(self.fallback):
+            self.model = self.fallback
+        self.piper = Piper()
+        self.failures = 0
         self.message = "Ready"
         os.makedirs(VOICE_DIR, exist_ok=True)
 
@@ -173,38 +252,41 @@ class DJ:
 
     # ------------------------------------------------------------------ speaking
 
-    def speak(self, text: str, name: str = None, timeout: int = 150):
+    def speak(self, text: str, name: str = None):
         """A WAV file of the DJ saying this, or None if the voice isn't available."""
         if not self.available:
             return None
-        name = name or hashlib.sha1((self.s.voice + "|" + text).encode("utf-8")).hexdigest()[:16]
+        voice = self.voice_name
+        name = name or hashlib.sha1((voice + "|" + text).encode("utf-8")).hexdigest()[:16]
         out = os.path.join(VOICE_DIR, f"{name}.wav")
         if os.path.exists(out) and os.path.getsize(out) > 1000:
             return out
-        tmp = out + ".part"
         started = time.time()
-        try:
-            env = dict(os.environ, LD_LIBRARY_PATH=os.path.dirname(PIPER))
-            subprocess.run(["nice", "-n", "10", PIPER, "--model", self.model, "--output_file", tmp, "--sentence_silence", "0.3"],
-                           input=text.encode("utf-8"), capture_output=True, timeout=timeout, check=True, env=env)
-            os.replace(tmp, out)
-            self.message = f"Ready (last line took {time.time() - started:.0f}s)"
+        if self.piper.say(self.model, text, out):
+            self.failures = 0
+            self.message = f"Ready - {voice} (last line took {time.time() - started:.0f}s)"
             return out
-        except (subprocess.SubprocessError, OSError) as e:
-            self.message = f"Voice failed: {e}"
-            log.warning("piper failed: %s", e)
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
-            return None
+        self.failures += 1
+        self.message = f"Voice failed ({self.piper.last_error})"
+        log.warning("DJ voice %s failed: %s", voice, self.piper.last_error)
+        # A voice that keeps failing (usually too slow for this Pi): use the standard one instead
+        if self.failures >= 2 and self.model != self.fallback and os.path.exists(self.fallback):
+            log.warning("the %s voice is too slow or not working on this Pi - using %s instead", voice, FALLBACK_VOICE)
+            self.model = self.fallback
+            self.failures = 0
+            self.message = f"Using {FALLBACK_VOICE} - {voice} was too slow on this Pi"
+        return None
+
+    @property
+    def voice_name(self) -> str:
+        return os.path.basename(self.model)[:-len(".onnx")]
 
     def standby_messages(self):
         """The 'please hold' messages - made once and kept, so they work without the NAS."""
         files = []
         for i, line in enumerate(STANDBY_LINES):
             text = line.format(station=self.s.name)
-            tag = hashlib.sha1((self.s.voice + text).encode()).hexdigest()[:8]
+            tag = hashlib.sha1((self.voice_name + text).encode()).hexdigest()[:8]
             f = self.speak(text, name=f"standby-{i}-{tag}")
             if f:
                 files.append(f)
