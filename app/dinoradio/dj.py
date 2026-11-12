@@ -177,7 +177,7 @@ class DJ:
         """A WAV file of the DJ saying this, or None if the voice isn't available."""
         if not self.available:
             return None
-        name = name or hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+        name = name or hashlib.sha1((self.s.voice + "|" + text).encode("utf-8")).hexdigest()[:16]
         out = os.path.join(VOICE_DIR, f"{name}.wav")
         if os.path.exists(out) and os.path.getsize(out) > 1000:
             return out

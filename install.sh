@@ -12,8 +12,8 @@ DATA=/var/lib/dinoradio
 MNT=/mnt/music
 USER_NAME=dinoradio
 PIPER_RELEASE="https://github.com/rhasspy/piper/releases/download/2023.11.14-2"
-VOICE_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/cori/medium"
-VOICE=en_GB-cori-medium
+VOICES_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0"
+VOICE=en_GB-cori-medium          # the default; the settings file's [dj] voice wins once it exists
 
 say()  { printf '\n\033[1;35m== %s\033[0m\n' "$*"; }
 ok()   { printf '   \033[32m✓\033[0m %s\n' "$*"; }
@@ -125,9 +125,22 @@ else
     tar -xzf /tmp/piper.tgz -C "$APP" && rm -f /tmp/piper.tgz
   fi
   mkdir -p "$APP/voices"
+  if [ -f "$ETC/settings.toml" ]; then
+    SET_VOICE=$(sed -n '/^\[dj\]/,/^\[/ s/^voice *= *"\([^"]*\)".*/\1/p' "$ETC/settings.toml" | head -1)
+    [ -n "$SET_VOICE" ] && VOICE="$SET_VOICE"
+  fi
+  # en_GB-cori-high  ->  en/en_GB/cori/high/en_GB-cori-high.onnx
+  if [[ "$VOICE" =~ ^(([a-z]+)_[A-Z]+)-([a-z0-9_]+)-(x_low|low|medium|high)$ ]]; then
+    VOICE_PATH="${BASH_REMATCH[2]}/${BASH_REMATCH[1]}/${BASH_REMATCH[3]}/${BASH_REMATCH[4]}"
+  else
+    die "the voice \"$VOICE\" in the settings isn't a Piper voice name (like en_GB-cori-high)"
+  fi
   for ext in onnx onnx.json; do
-    [ -s "$APP/voices/$VOICE.$ext" ] || curl -fsSL "$VOICE_BASE/$VOICE.$ext?download=true" -o "$APP/voices/$VOICE.$ext" \
-      || die "couldn't download the $VOICE voice from huggingface.co"
+    if [ ! -s "$APP/voices/$VOICE.$ext" ]; then
+      curl -fsSL "$VOICES_URL/$VOICE_PATH/$VOICE.$ext?download=true" -o "$APP/voices/$VOICE.$ext.part" \
+        || die "couldn't download the $VOICE voice from huggingface.co"
+      mv "$APP/voices/$VOICE.$ext.part" "$APP/voices/$VOICE.$ext"
+    fi
   done
   if echo "Testing, testing." | LD_LIBRARY_PATH="$APP/piper" "$APP/piper/piper" --model "$APP/voices/$VOICE.onnx" \
        --output_file /tmp/dj-test.wav >/dev/null 2>&1 && [ -s /tmp/dj-test.wav ]; then
