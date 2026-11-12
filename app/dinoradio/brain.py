@@ -77,7 +77,7 @@ class Brain:
         threading.Thread(target=self._prepare_standby_voice, daemon=True, name="standby-voice").start()
         for target in (self._health_loop, self._scan_loop, self._charts_loop, self._levelling_loop,
                        self._backup_loop, self._control_server):
-            threading.Thread(target=target, daemon=True, name=target.__name__).start()
+            threading.Thread(target=self._keep_running, args=(target,), daemon=True, name=target.__name__).start()
         if self.s.web_port:
             threading.Thread(target=webui.serve, args=(self, self.s.web_port), daemon=True, name="web").start()
         log.info("Dino's Radio brain started - music folder %s", self.s.music_folder)
@@ -131,6 +131,16 @@ class Brain:
         self.history.insert(0, (time.strftime("%H:%M"), item.artist, item.title, item.kind))
         del self.history[20:]
         log.info("on air: %s - %s%s", item.artist, item.title, "  [DJ]" if item.voice else "")
+
+    def _keep_running(self, job):
+        """Runs a background job, and starts it again if it ever stops with an error."""
+        while not self.stop.is_set():
+            try:
+                job()
+                return
+            except Exception:
+                log.exception("%s stopped with an error - restarting it in 30 seconds", job.__name__.strip("_"))
+                self.stop.wait(30)
 
     # ================================================================== preparing the next item
 
@@ -360,7 +370,7 @@ class Brain:
         pending = [i for i in self.items.values() if i.started is None]
         now = item_info(self.now)
         cur = self.engine.current
-        if cur is not None and (self.now is None or cur.tag != self.now.tag):
+        if cur is not None and (self.now is None or not cur.tag):      # nothing queued yet, or a fallback track
             now = {"kind": "standby" if not cur.tag else "song", "artist": cur.artist, "title": cur.title, "dj": None}
         return {
             "station": self.s.name,

@@ -168,18 +168,27 @@ class Library:
     # ------------------------------------------------------------------ loudness
 
     def measure(self, track_id: int, path: str, timeout: int = 240):
-        """Measures a track's loudness (EBU R128) with ffmpeg and stores the gain for levelling."""
+        """Measures a track's loudness (EBU R128) with ffmpeg and stores the gain for levelling.
+        A track that can't be measured (damaged, or far too slow) is marked 0 dB - played as it is -
+        so it isn't tried again and again. If the music folder itself has gone, nothing is marked."""
         try:
+            # tags in odd encodings appear in ffmpeg's output, so never fail on decoding it
             out = subprocess.run(
                 ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-nostats", "-v", "info", "-i", path,
                  "-vn", "-af", "ebur128=framelog=quiet", "-f", "null", "-"],
-                capture_output=True, text=True, timeout=timeout).stderr
+                capture_output=True, timeout=timeout).stderr.decode("utf-8", "replace")
             m = re.findall(r"I:\s*(-?\d+(?:\.\d+)?)\s*LUFS", out)
-            if not m:
+            if m:
+                gain = max(-15.0, min(12.0, round(self.s.target_lufs - float(m[-1]), 2)))
+            elif not os.path.isdir(self.root):
                 return None
-            lufs = float(m[-1])
-            gain = max(-15.0, min(12.0, round(self.s.target_lufs - lufs, 2)))
-        except (subprocess.TimeoutExpired, OSError) as e:
+            else:
+                log.info("couldn't measure the loudness of %s - it will play as it is", path)
+                gain = 0.0
+        except subprocess.TimeoutExpired:
+            log.info("measuring %s took too long - it will play as it is", path)
+            gain = 0.0
+        except OSError as e:
             log.debug("loudness not measured for %s: %s", path, e)
             return None
         connect().execute("UPDATE tracks SET gain = ? WHERE id = ?", (gain, track_id))
@@ -187,10 +196,13 @@ class Library:
 
     def next_unmeasured(self):
         return connect().execute(
-            "SELECT id, path FROM tracks WHERE gain IS NULL ORDER BY random() LIMIT 1").fetchone()
+            """SELECT id, path FROM tracks WHERE gain IS NULL AND (duration = 0 OR duration BETWEEN ? AND ?)
+               ORDER BY random() LIMIT 1""", (self.s.min_seconds, self.s.max_seconds)).fetchone()
 
     def counts(self) -> dict:
         con = connect()
-        total = con.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
-        levelled = con.execute("SELECT COUNT(*) FROM tracks WHERE gain IS NOT NULL").fetchone()[0]
+        playable = "(duration = 0 OR duration BETWEEN ? AND ?)"
+        args = (self.s.min_seconds, self.s.max_seconds)
+        total = con.execute(f"SELECT COUNT(*) FROM tracks WHERE {playable}", args).fetchone()[0]
+        levelled = con.execute(f"SELECT COUNT(*) FROM tracks WHERE gain IS NOT NULL AND {playable}", args).fetchone()[0]
         return dict(total=total, levelled=levelled)
