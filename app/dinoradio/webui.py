@@ -178,6 +178,7 @@ PAGE = r"""<!DOCTYPE html>
         <div>Levelling</div><div><span id="levelling"></span><div class="bar"><i id="levelBar"></i></div></div>
         <div>DJ</div><div id="dj"></div>
         <div>Standby</div><div id="standby"></div>
+        <div>Weather</div><div id="weather"></div>
         <div>Backup</div><div id="backup"></div>
         <div>Up for</div><div id="uptime"></div>
         <div>Stream</div><div id="stream" style="word-break:break-all"></div>
@@ -236,6 +237,7 @@ async function refresh() {
     $("dj").textContent = s.dj;
     $("standby").textContent = s.standby_tracks + " tracks, " + s.standby_messages + " messages";
     $("backup").textContent = s.backup || "—";
+    $("weather").textContent = s.weather || "—";
     $("uptime").textContent = fmtMinutes(s.uptime_minutes);
     streamUrl = location.protocol + "//" + location.hostname + ":" + s.stream_port + "/" + s.stream_mount;
     $("stream").innerHTML = '<a style="color:var(--blue)" href="' + esc(streamUrl) + '">' + esc(streamUrl) + '</a>';

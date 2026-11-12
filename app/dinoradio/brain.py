@@ -1,5 +1,6 @@
 """Dino's Radio - the brain. Chooses the music, prepares the DJ, watches the NAS and feeds the audio engine."""
 import argparse
+import datetime
 import itertools
 import json
 import logging
@@ -20,6 +21,7 @@ from .dj import DJ
 from .engine import Engine
 from .library import Library
 from .picker import Picker
+from .weather import Weather
 
 log = logging.getLogger("brain")
 STATUS_FILE = os.path.join(config.RUN_DIR, "status.json")
@@ -47,6 +49,7 @@ class Brain:
         self.charts = Charts(settings)
         self.picker = Picker(settings)
         self.dj = DJ(settings)
+        self.weather = Weather(settings)
         self.engine = Engine(settings)
         self.items = {}                 # rid -> Item, pushed and not finished
         self.now = None                 # the Item on air
@@ -179,10 +182,15 @@ class Brain:
         group = Picker.group_of(row)
         back = self.back_on_air
         said = self.say_next
+        weather = self.weather.take() if self.dj.available and not back and not said else None
         voice, script = None, ""
-        if self.dj.available and (said or self.dj.should_talk(group, forced=back)):
+        if self.dj.available and (said or weather or self.dj.should_talk(group, forced=back)):
             previous = self.now.row if self.now is not None and self.now.kind == "song" else None
-            script = said or self.dj.script(row, previous=previous, back_on_air=back)
+            if weather:
+                # the weather, then straight into the song (no "that was..." to keep it short)
+                script = weather + " " + self.dj.script(row, previous=None)
+            else:
+                script = said or self.dj.script(row, previous=previous, back_on_air=back)
             voice = self.dj.speak(script)
             self.dj.note(voice is not None)
         else:
@@ -387,6 +395,7 @@ class Brain:
             "standby_tracks": len(config.standby_tracks(self.s)),
             "standby_messages": len(self.standby_voice),
             "backup": self.backup_message,
+            "weather": self.weather.message,
             "history": self.history[:10],
             "stream": f"http://<this pi>:{self.s.icecast_port}/{self.s.stream_mount}",
             "uptime_minutes": round((time.time() - self.started) / 60),
@@ -414,6 +423,11 @@ class Brain:
         if cmd == "backup":
             self.backup_requested = True
             return f"Backing up to {backup.folder_for(self.s)} - check with: dinoradio status"
+        if cmd == "weather":
+            if not self.weather.enabled:
+                return "No weather location is set - add one with: dinoradio settings  ([weather] location)"
+            self.weather.next_due = datetime.datetime.now()
+            return "The DJ will read the weather over the next song to be queued (within a few minutes)."
         if cmd == "say":
             if not self.dj.available:
                 return "The DJ voice isn't available."

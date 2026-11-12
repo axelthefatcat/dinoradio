@@ -59,5 +59,11 @@ folder = "@BACKUP@"   # nightly backups (blank = on the SD card only)
 hour = 3                          # the hour it backs up each night
 keep = 7                          # how many nightly backups to keep
 
+[weather]
+location = "@WEATHER@"            # your town, e.g. "Evesham" (or "Evesham, GB"); blank = no weather
+say_as = ""                       # what the DJ calls it, if different (e.g. "the Vale")
+from_hour = 7                     # weather once an hour, at a random time, between these hours
+to_hour = 22
+
 [web]
 port = 8080                       # the status page: http://<the Pi>:8080  (0 turns it off)

@@ -14,6 +14,7 @@ HELP = """Dino's Radio
   dinoradio status          What's on air, what's next, and how the station is doing
   dinoradio skip            Skip the current song
   dinoradio say "text"      The DJ says this over the next song to be queued
+  dinoradio weather         The DJ reads the weather over the next song to be queued
   dinoradio rescan          Look for new or changed music now (add 'full' to check every file)
   dinoradio standby on|off  Test standby mode as if the NAS had gone away
   dinoradio fill-standby N  Copy N more songs (default 25) from the NAS into the standby folder
@@ -63,6 +64,7 @@ def show_status():
     print(f"  Levelling       {lv['levelled']} of {lv['total']} tracks measured")
     print(f"  DJ              {st['dj']}")
     print(f"  Standby         {st['standby_tracks']} tracks, {st['standby_messages']} messages")
+    print(f"  Weather         {st.get('weather', '-')}")
     print(f"  Backup          {st.get('backup', '-')}")
     print(f"  Up for          {st['uptime_minutes']} minutes")
     if st.get("history"):
@@ -79,7 +81,7 @@ def main():
         print(HELP)
     elif cmd == "status":
         show_status()
-    elif cmd in ("skip", "rescan", "say", "standby", "backup"):
+    elif cmd in ("skip", "rescan", "say", "standby", "backup", "weather"):
         print(ask(f"{cmd} {rest}".strip()))
     elif cmd == "settings":
         subprocess.call(["sudo", os.environ.get("EDITOR", "nano"), config.SETTINGS_FILE])

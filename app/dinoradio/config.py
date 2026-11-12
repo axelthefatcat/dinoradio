@@ -57,6 +57,11 @@ class Settings:
     check_seconds: int = 30
     standby_folder: str = os.path.join(DATA_DIR, "standby")
     message_every: int = 3               # in standby, the "please hold" message every this many tracks
+    # [weather]
+    weather_location: str = ""           # town for the DJ's weather, e.g. "Evesham" - blank = no weather
+    weather_name: str = ""               # what the DJ calls it, if not the town's own name
+    weather_from_hour: int = 7
+    weather_to_hour: int = 22
     # [web]
     web_port: int = 8080                 # the status page - 0 turns it off
     # [backup]
@@ -83,6 +88,8 @@ SECTIONS = {
     "standby": {"check_seconds": "check_seconds", "folder": "standby_folder", "message_every": "message_every"},
     "backup": {"folder": "backup_folder", "hour": "backup_hour", "keep": "backup_keep"},
     "web": {"port": "web_port"},
+    "weather": {"location": "weather_location", "say_as": "weather_name", "from_hour": "weather_from_hour",
+                "to_hour": "weather_to_hour"},
 }
 
 

@@ -19,6 +19,9 @@ simple Alexa skill), a web browser, VLC, or any internet-radio player.
   Pi) talks over the start of a song with the music dipped underneath. For example: *"Here's
   a UK number one from nineteen eighty-four…"*. The DJ always introduces top 10 hits, often
   other chart hits, and now and then everything else.
+- **The weather, once an hour.** At a random time each hour (7am–10pm by default), the DJ reads
+  the weather for your town before a song: what it's doing, the temperature, the wind, and whether
+  rain's on the way. It comes from [Open-Meteo](https://open-meteo.com), with no account needed.
 - **Never off air.** If the NAS goes away (a reboot, a network drop), the radio switches to
   standby tracks kept on a USB stick. The DJ says *"Sorry, we're having a little trouble
   reaching the record library… please hold"* now and then. When the music comes back, the DJ
@@ -77,6 +80,7 @@ Open **`http://<the Pi>:8080`** in any browser on your network for the status pa
 | `dinoradio status` | What's on air, what's next, and progress |
 | `dinoradio skip` | Skip the current song |
 | `dinoradio say "text"` | The DJ says something over an upcoming song |
+| `dinoradio weather` | The DJ reads the weather over an upcoming song |
 | `dinoradio rescan` | Look for new music now (`rescan full` checks every file) |
 | `dinoradio standby on` / `off` | Test standby mode |
 | `dinoradio fill-standby 25` | Copy 25 more songs to the standby folder |
@@ -87,7 +91,8 @@ Open **`http://<the Pi>:8080`** in any browser on your network for the status pa
 | `dinoradio stream` | Show the stream address |
 
 All the settings are in `/etc/dinoradio/settings.toml`. That includes the mix percentages, how
-often the DJ talks, crossfade length, levelling, Christmas songs (December only by default),
+often the DJ talks, the DJ voice (`en_GB-cori-medium`, or the clearer but slower
+`en_GB-cori-high`; run `update-radio` after changing it), the weather town, crossfade length, levelling, Christmas songs (December only by default),
 genres to leave out, and the standby and backup options. `dinoradio settings` opens the file
 and offers to restart afterwards.
 
@@ -173,5 +178,5 @@ network.
 - **Data:** a SQLite database holds the library, charts and history.
 - **Services:** one systemd service runs the radio; `install.sh` sets everything up.
 
-Chart data comes from Wikipedia (CC BY-SA). The DJ voice is Piper (MIT) with the
+Chart data comes from Wikipedia (CC BY-SA). Weather data comes from Open-Meteo (CC BY 4.0). The DJ voice is Piper (MIT) with the
 `en_GB-cori-medium` voice, downloaded from the Piper voices collection during install.

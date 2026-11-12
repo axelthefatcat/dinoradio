@@ -51,6 +51,7 @@ if [ ! -f "$ETC/settings.toml" ] || [ $RECONFIGURE -eq 1 ]; then
   read -r -s -p "   NAS password for $NASUSER: " NASPASS </dev/tty; echo
   SMBVER=$(ask "SMB version (3.0 suits Synology; try 2.1 or 1.0 for old NASes)" "3.0")
   EMAIL=$(ask "Contact email Wikipedia sees with chart lookups (blank = none)" "")
+  WEATHER=$(ask "Town for the DJ's hourly weather, e.g. Evesham (blank = no weather)" "")
   CONFIGURE=1
 else
   CONFIGURE=0
@@ -289,15 +290,22 @@ if [ $CONFIGURE -eq 1 ] && [ $RESTORED -eq 0 ]; then
   FOLDER="$MNT"; [ -n "$SUB" ] && FOLDER="$MNT/$SUB"
   STATION_TOML=${STATION//\"/\'}
   sed -e "s|@STATION@|$STATION_TOML|" -e "s|@MOUNT@|$MOUNT_NAME|" -e "s|@PASSWORD@|$ICE_SOURCE|" \
-      -e "s|@FOLDER@|$FOLDER|" -e "s|@EMAIL@|$EMAIL|" -e "s|@BACKUP@|$BACKUP_SETTING|" -e "s|@STANDBY@|$STANDBY_SETTING|" \
+      -e "s|@FOLDER@|$FOLDER|" -e "s|@EMAIL@|$EMAIL|" -e "s|@BACKUP@|$BACKUP_SETTING|" -e "s|@STANDBY@|$STANDBY_SETTING|" -e "s|@WEATHER@|${WEATHER//|/}|" \
       "$HERE/settings.template.toml" > "$ETC/settings.toml"
   ok "Settings written to $ETC/settings.toml"
 elif ! grep -q '^\[backup\]' "$ETC/settings.toml"; then
-  sed -n '/^\[backup\]/,$p' "$HERE/settings.template.toml" | sed "s|@BACKUP@|$BACKUP_SETTING|" >> "$ETC/settings.toml"
+  { echo; sed -n '/^\[backup\]/,/^keep/p' "$HERE/settings.template.toml" | sed "s|@BACKUP@|$BACKUP_SETTING|"; } >> "$ETC/settings.toml"
   ok "Backup settings added"
 fi
 if ! grep -q '^\[web\]' "$ETC/settings.toml"; then
-  sed -n '/^\[web\]/,$p' "$HERE/settings.template.toml" >> "$ETC/settings.toml"
+  { echo; sed -n '/^\[web\]/,$p' "$HERE/settings.template.toml"; } >> "$ETC/settings.toml"
+fi
+if ! grep -q '^\[weather\]' "$ETC/settings.toml"; then
+  say "Weather"
+  WEATHER=$(ask "Town for the DJ's hourly weather, e.g. Evesham (blank = no weather)" "")
+  { echo; sed -n '/^\[weather\]/,/^to_hour/p' "$HERE/settings.template.toml" | sed "s|@WEATHER@|${WEATHER//|/}|"; } \
+    >> "$ETC/settings.toml"
+  ok "Weather: ${WEATHER:-off}"
 fi
 if [ $USB -eq 1 ] && [ $RESTORED -eq 0 ] && [ $CONFIGURE -eq 0 ]; then
   sed -i "/^\[backup\]/,/^\[/ s|^folder *=.*|folder = \"$BACKUP_SETTING\"   # nightly backups (blank = on the SD card only)|" "$ETC/settings.toml"
