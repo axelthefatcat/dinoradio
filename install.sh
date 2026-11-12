@@ -293,6 +293,18 @@ if [ $CONFIGURE -eq 1 ]; then
   echo "Icecast admin page: http://$(hostname).local:8000/admin/   user: admin   password: $ICE_ADMIN" > "$ETC/icecast-admin.txt"
   chmod 600 "$ETC/icecast-admin.txt"
 fi
+# Keep the stream's address off Icecast's public status pages (it works like a password)
+S_MOUNT_NAME=$(sed -n 's/^stream_mount *= *"\([^"]*\)".*/\1/p' "$ETC/settings.toml" | head -1)
+python3 - "$ICE" "$S_MOUNT_NAME" <<'PYEOF'
+import re, sys
+path, mount = sys.argv[1], sys.argv[2]
+xml = open(path).read()
+xml = re.sub(r"\s*<!-- dinoradio -->.*?<!-- /dinoradio -->", "", xml, flags=re.S)
+block = (f"\n    <!-- dinoradio -->\n    <mount type=\"normal\">\n        <mount-name>/{mount}</mount-name>\n"
+         f"        <hidden>1</hidden>\n        <public>0</public>\n    </mount>\n    <!-- /dinoradio -->\n")
+xml = xml.replace("</icecast>", block + "</icecast>", 1)
+open(path, "w").write(xml)
+PYEOF
 [ -f /etc/default/icecast2 ] && sed -i 's/^ENABLE=.*/ENABLE=true/' /etc/default/icecast2
 systemctl enable icecast2 >/dev/null 2>&1 || true
 systemctl restart icecast2

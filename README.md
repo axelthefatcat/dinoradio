@@ -144,7 +144,8 @@ Proxy**, sending `https://radio.your-domain` to `http://<the Pi>:8000`. Then use
 AudioPlayer skill that plays one stream). There's a step-by-step guide, with the skill code, at
 [echo-home-stream](https://github.com/axelthefatcat/echo-home-stream).
 
-The stream mount (`radio-…`) is random and works like a password, so keep it private. Don't
+The stream mount (`radio-…`) is random and works like a password, so keep it private. The
+installer hides it from Icecast's public status pages. Don't
 put the status page (port 8080) on the internet. It has no login and is meant for your home
 network.
 
