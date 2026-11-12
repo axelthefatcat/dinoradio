@@ -92,7 +92,7 @@ Open **`http://<the Pi>:8080`** in any browser on your network for the status pa
 
 All the settings are in `/etc/dinoradio/settings.toml`. That includes the mix percentages, how
 often the DJ talks, the DJ voice (`en_GB-cori-medium`, or the clearer but slower
-`en_GB-cori-high`; run `update-radio` after changing it), the weather town, crossfade length, levelling, Christmas songs (December only by default),
+`en_GB-cori-high`, which needs a Pi 4 or 5; run `update-radio` after changing it), the weather town, crossfade length, levelling, Christmas songs (December only by default),
 genres to leave out, and the standby and backup options. `dinoradio settings` opens the file
 and offers to restart afterwards.
 

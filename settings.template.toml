@@ -27,7 +27,7 @@ artist_gap = 15                   # an artist won't play again within this many 
 
 [dj]
 enabled = true
-voice = "en_GB-cori-medium"       # or "en_GB-cori-high" (clearer, slower) - then run update-radio to fetch it
+voice = "en_GB-cori-medium"       # "en_GB-cori-high" is clearer but needs a Pi 4 or 5 - then run update-radio
 # Chance (%) the DJ introduces the next song...
 top10_chance = 100                # ...when it was a top 10 hit
 chart_chance = 50                 # ...when it charted at 11-100

@@ -115,7 +115,7 @@ class Piper:
             if first:
                 self._start(model)
             # the first line also loads the voice, so it gets longer
-            timeout = timeout or (300 if first else 180)
+            timeout = timeout or (420 if first else 300)
             tmp = out + ".part.wav"
             try:
                 self.proc.stdin.write((json.dumps({"text": text, "output_file": tmp}) + "\n").encode("utf-8"))
