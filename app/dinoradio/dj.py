@@ -151,6 +151,18 @@ STANDBY_LINES = [
 ]
 
 
+BACK_LINES = [
+    "Good news! We're back on air, and the record library is open again.",
+    "And we're back! Thanks for bearing with us. This is {station}.",
+]
+
+
+def _pick(options, key: str):
+    """The same choice every time for the same key, so the line (and its voice clip) can be reused."""
+    h = int(hashlib.sha1(key.encode("utf-8")).hexdigest()[:8], 16)
+    return options[h % len(options)]
+
+
 class DJ:
     def __init__(self, settings, rng=random):
         self.s = settings
@@ -161,14 +173,15 @@ class DJ:
         self.fallback = os.path.join(APP_DIR, "voices", f"{FALLBACK_VOICE}.onnx")
         if not os.path.exists(self.model) and os.path.exists(self.fallback):
             self.model = self.fallback
-        self.piper = Piper()
-        self.failures = 0
-        self.message = "Ready"
         os.makedirs(VOICE_DIR, exist_ok=True)
 
     @property
     def available(self) -> bool:
         return self.s.dj_enabled and os.path.exists(PIPER) and os.path.exists(self.model)
+
+    @property
+    def voice_name(self) -> str:
+        return os.path.basename(self.model)[:-len(".onnx")]
 
     # ------------------------------------------------------------------ deciding
 
@@ -192,113 +205,62 @@ class DJ:
 
     # ------------------------------------------------------------------ writing
 
-    def script(self, song, previous=None, back_on_air=False) -> str:
-        r = self.rng
-        station = self.s.name
+    @staticmethod
+    def _names(song):
         artist = spoken(re.sub(r"\s+(feat\.?|ft\.)\s+", " featuring ", song["artist"] or "", flags=re.I))
         title = spoken(names.base_title(song["title"]))
-        parts = []
+        return artist, title
 
-        if back_on_air:
-            parts.append(r.choice([
-                f"Good news! We're back on air, and the record library is open again.",
-                f"And we're back! Thanks for bearing with us. This is {station}.",
-            ]))
-        else:
-            if previous is not None and r.random() * 100 < self.s.back_announce_chance:
-                p_artist = spoken(previous["artist"])
-                p_title = spoken(names.base_title(previous["title"]))
-                parts.append(r.choice([
-                    f"That was {p_artist}, with {p_title}.",
-                    f"{p_artist} there, with {p_title}.",
-                    f"Before that, {p_title}, from {p_artist}.",
-                ]))
-            if r.random() * 100 < self.s.station_ident_chance:
-                parts.append(r.choice([f"You're listening to {station}.", f"This is {station}.",
-                                       f"More music on {station}."]))
-
+    def intro(self, song) -> str:
+        """The introduction for a song - always worded the same way for the same song."""
+        artist, title = self._names(song)
+        key = "intro|" + (song["chart_key"] or f"{artist}|{title}")
         pos, country, year = song["position"], song["country"], song["year"]
         yr = year_words(year) if year else None
         back_in = f" back in {yr}" if yr else ""
         from_yr = f" from {yr}" if yr else ""
         if pos is not None and pos == 1:
-            parts.append(r.choice([
+            return _pick([
                 f"Here's {a_country(country)} number one{from_yr}. It's {artist}, with {title}.",
                 f"A chart-topper now. {artist} went all the way to number one in {country_name(country)}{back_in}, with {title}.",
                 f"Straight to the top of {chart_name(country)}{back_in}. This is {title}, by {artist}.",
-            ]))
-        elif pos is not None and pos <= 10:
+            ], key)
+        if pos is not None and pos <= 10:
             n = number_words(pos)
-            parts.append(r.choice([
+            return _pick([
                 f"This one reached number {n} in {country_name(country)}{back_in}. It's {artist}, with {title}.",
                 f"A top ten hit{from_yr}. Number {n} in {country_name(country)} for {artist}. This is {title}.",
                 f"Here's {artist}, and {a_country(country)} number {n} hit. {title}.",
-            ]))
-        elif pos is not None and pos <= 100:
+            ], key)
+        if pos is not None and pos <= 100:
             n = number_words(pos)
-            parts.append(r.choice([
+            return _pick([
                 f"This got to number {n} in {chart_name(country)}{back_in}. Here's {artist}, with {title}.",
                 f"{artist} now. {title} made number {n} in {country_name(country)}.",
                 f"A chart hit{from_yr} for {artist}. This is {title}.",
-            ]))
-        else:
-            parts.append(r.choice([
-                f"Next up, {artist}, with {title}.",
-                f"Here's {artist}. This is {title}.",
-                f"Now, {title}, from {artist}.",
-                f"Something from {artist} now. {title}.",
-            ]))
-        return " ".join(parts)
+            ], key)
+        return _pick([
+            f"Next up, {artist}, with {title}.",
+            f"Here's {artist}. This is {title}.",
+            f"Now, {title}, from {artist}.",
+            f"Something from {artist} now. {title}.",
+        ], key)
 
-    # ------------------------------------------------------------------ speaking
+    def back_announce(self, previous) -> str:
+        """'That was...' for the song that just played - also always the same for the same song."""
+        artist, title = self._names(previous)
+        return _pick([
+            f"That was {artist}, with {title}.",
+            f"{artist} there, with {title}.",
+            f"Before that, {title}, from {artist}.",
+        ], "back|" + (previous["chart_key"] or f"{artist}|{title}"))
 
-    def speak(self, text: str, name: str = None):
-        """A WAV file of the DJ saying this, or None if the voice isn't available."""
-        if not self.available:
-            return None
-        voice = self.voice_name
-        name = name or hashlib.sha1((voice + "|" + text).encode("utf-8")).hexdigest()[:16]
-        out = os.path.join(VOICE_DIR, f"{name}.wav")
-        if os.path.exists(out) and os.path.getsize(out) > 1000:
-            return out
-        started = time.time()
-        if self.piper.say(self.model, text, out):
-            self.failures = 0
-            self.message = f"Ready - {voice} (last line took {time.time() - started:.0f}s)"
-            return out
-        self.failures += 1
-        self.message = f"Voice failed ({self.piper.last_error})"
-        log.warning("DJ voice %s failed: %s", voice, self.piper.last_error)
-        # A voice that keeps failing (usually too slow for this Pi): use the standard one instead
-        if self.failures >= 2 and self.model != self.fallback and os.path.exists(self.fallback):
-            log.warning("the %s voice is too slow or not working on this Pi - using %s instead", voice, FALLBACK_VOICE)
-            self.model = self.fallback
-            self.failures = 0
-            self.message = f"Using {FALLBACK_VOICE} - {voice} was too slow on this Pi"
-        return None
+    def idents(self):
+        st = self.s.name
+        return [f"You're listening to {st}.", f"This is {st}.", f"More music on {st}."]
 
-    @property
-    def voice_name(self) -> str:
-        return os.path.basename(self.model)[:-len(".onnx")]
+    def back_lines(self):
+        return [line.format(station=self.s.name) for line in BACK_LINES]
 
-    def standby_messages(self):
-        """The 'please hold' messages - made once and kept, so they work without the NAS."""
-        files = []
-        for i, line in enumerate(STANDBY_LINES):
-            text = line.format(station=self.s.name)
-            tag = hashlib.sha1((self.voice_name + text).encode()).hexdigest()[:8]
-            f = self.speak(text, name=f"standby-{i}-{tag}")
-            if f:
-                files.append(f)
-        return files
-
-    def tidy(self, keep_hours: int = 48):
-        cutoff = time.time() - keep_hours * 3600
-        for f in glob.glob(os.path.join(VOICE_DIR, "*.wav")):
-            if os.path.basename(f).startswith("standby-"):
-                continue
-            try:
-                if os.path.getmtime(f) < cutoff:
-                    os.remove(f)
-            except OSError:
-                pass
+    def standby_lines(self):
+        return [line.format(station=self.s.name) for line in STANDBY_LINES]

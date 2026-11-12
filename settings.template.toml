@@ -27,7 +27,7 @@ artist_gap = 15                   # an artist won't play again within this many 
 
 [dj]
 enabled = true
-voice = "en_GB-cori-medium"       # "en_GB-cori-high" is clearer but needs a Pi 4 or 5 - then run update-radio
+voice = "en_GB-cori-medium"       # or "en_GB-cori-high" (clearer, much slower) - then run update-radio
 # Chance (%) the DJ introduces the next song...
 top10_chance = 100                # ...when it was a top 10 hit
 chart_chance = 50                 # ...when it charted at 11-100
@@ -39,6 +39,8 @@ station_ident_chance = 20         # % of links that mention the station name
 talk_delay_seconds = 2            # the DJ starts this long after the song begins
 duck_percent = 25                 # music volume (%) while the DJ talks
 voice_volume = 1.4                # DJ loudness (1.0 = as recorded)
+plan_ahead = 6                    # songs chosen in advance, so the DJ's lines can be voiced in time
+prerender = true                  # in quiet moments, voice the big hits' introductions ahead of time
 
 [sound]
 crossfade_seconds = 4             # songs blend into each other over this many seconds
@@ -60,7 +62,7 @@ hour = 3                          # the hour it backs up each night
 keep = 7                          # how many nightly backups to keep
 
 [weather]
-location = "@WEATHER@"            # your town, e.g. "Evesham" (or "Evesham, GB"); blank = no weather
+location = "@WEATHER@"            # your town, e.g. "York" (or "York, GB"); blank = no weather
 say_as = ""                       # what the DJ calls it, if different (e.g. "the Vale")
 from_hour = 7                     # weather once an hour, at a random time, between these hours
 to_hour = 22

@@ -164,6 +164,10 @@ PAGE = r"""<!DOCTYPE html>
         </div>
         <audio id="audio" preload="none"></audio>
       </div>
+      <div class="card" style="margin-top:16px" id="comingBox" hidden>
+        <div class="label">Coming up</div>
+        <ol id="coming"></ol>
+      </div>
       <div class="card" style="margin-top:16px">
         <div class="label">Recently played</div>
         <ol id="history"></ol>
@@ -177,6 +181,7 @@ PAGE = r"""<!DOCTYPE html>
         <div>Chart positions</div><div><span id="charts"></span><div class="bar"><i id="chartsBar"></i></div></div>
         <div>Levelling</div><div><span id="levelling"></span><div class="bar"><i id="levelBar"></i></div></div>
         <div>DJ</div><div id="dj"></div>
+        <div>Voiced ahead</div><div id="ahead"></div>
         <div>Standby</div><div id="standby"></div>
         <div>Weather</div><div id="weather"></div>
         <div>Backup</div><div id="backup"></div>
@@ -235,6 +240,12 @@ async function refresh() {
     $("levelling").textContent = l.levelled + " of " + l.total + " tracks";
     $("levelBar").style.width = (l.total ? 100 * l.levelled / l.total : 0) + "%";
     $("dj").textContent = s.dj;
+    $("ahead").textContent = s.voiced_ahead || "—";
+    const cu = s.coming_up || [];
+    $("comingBox").hidden = !cu.length;
+    $("coming").innerHTML = cu.map(c => '<li><span>' + esc(c.artist) + ' – ' + esc(c.title) + '</span>' +
+      (c.dj === "ready" ? ' <span class="chip">DJ ready</span>' : c.dj === "waiting" ? ' <span class="sb">DJ voicing</span>' : '') +
+      '</li>').join("");
     $("standby").textContent = s.standby_tracks + " tracks, " + s.standby_messages + " messages";
     $("backup").textContent = s.backup || "—";
     $("weather").textContent = s.weather || "—";

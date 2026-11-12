@@ -63,17 +63,19 @@ class Picker:
             return "chart"
         return "other"
 
-    def pick(self, exclude_ids=()):
-        """The next song (a database row), or None if the library is empty."""
+    def pick(self, exclude_ids=(), exclude_artists=(), exclude_keys=()):
+        """The next song (a database row), or None if the library is empty.
+        exclude_artists / exclude_keys: songs already planned but not played yet."""
         tracks = [t for t in self._tracks() if t["id"] not in exclude_ids]
         if not tracks:
             return None
         con = connect()
         since = time.time() - self.s.song_repeat_hours * 3600
         recent_songs = {r[0] for r in con.execute("SELECT chart_key FROM plays WHERE played > ?", (since,))}
+        recent_songs |= set(exclude_keys)
         recent_artists = [r[0] for r in con.execute(
             "SELECT artist_key FROM plays ORDER BY id DESC LIMIT ?", (max(0, self.s.artist_gap),))]
-        recent_artists = set(recent_artists)
+        recent_artists = set(recent_artists) | set(exclude_artists)
 
         by_group = {g: [] for g in GROUPS}
         for t in tracks:

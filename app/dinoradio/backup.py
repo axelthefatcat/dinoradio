@@ -56,7 +56,7 @@ def make(s) -> str:
                 with open(net_file, "w") as f:
                     f.write(net)
                 tar.add(net_file, arcname="network.conf")
-            for f in glob.glob(os.path.join(config.DATA_DIR, "voice", "standby-*.wav")):
+            for f in glob.glob(os.path.join(config.DATA_DIR, "voice", "standby-*")):
                 tar.add(f, arcname=os.path.join("voice", os.path.basename(f)))
         os.replace(part, out)
     if not s.standby_folder.startswith(USB_MOUNT + "/"):      # tracks on the drive itself needn't be copied

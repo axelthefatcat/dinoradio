@@ -63,10 +63,17 @@ def show_status():
           f"{ch['hits']} chart hits ({ch['message']})")
     print(f"  Levelling       {lv['levelled']} of {lv['total']} tracks measured")
     print(f"  DJ              {st['dj']}")
+    if st.get("voiced_ahead"):
+        print(f"  Voiced ahead    {st['voiced_ahead']}")
     print(f"  Standby         {st['standby_tracks']} tracks, {st['standby_messages']} messages")
     print(f"  Weather         {st.get('weather', '-')}")
     print(f"  Backup          {st.get('backup', '-')}")
     print(f"  Up for          {st['uptime_minutes']} minutes")
+    if st.get("coming_up"):
+        print("\n  Coming up")
+        for c in st["coming_up"]:
+            mark = {"ready": "  (DJ ready)", "waiting": "  (DJ voicing)"}.get(c.get("dj"), "")
+            print(f"    {c['artist']} - {c['title']}{mark}")
     if st.get("history"):
         print("\n  Recently played")
         for when, artist, title, kind in st["history"][:8]:

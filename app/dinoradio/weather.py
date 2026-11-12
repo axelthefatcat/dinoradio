@@ -107,7 +107,7 @@ class Weather:
                 return saved["name"], saved["lat"], saved["lon"]
         except (OSError, ValueError, KeyError):
             pass
-        # "Evesham" or "Evesham, GB" / "52.09,-1.94"
+        # "York" or "York, GB" / "53.96,-1.08"
         parts = [p.strip() for p in wanted.split(",")]
         try:
             if len(parts) == 2 and all(p.replace(".", "", 1).replace("-", "", 1).isdigit() for p in parts):

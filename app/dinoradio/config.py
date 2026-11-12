@@ -46,6 +46,8 @@ class Settings:
     talk_delay_seconds: float = 2.0
     duck_percent: int = 25
     voice_volume: float = 1.4
+    plan_ahead: int = 6                  # songs chosen in advance, so their links can be voiced in time
+    prerender: bool = True               # in quiet moments, voice the big hits' introductions ahead of time
     # [sound]
     crossfade_seconds: float = 4.0
     levelling: bool = True
@@ -58,7 +60,7 @@ class Settings:
     standby_folder: str = os.path.join(DATA_DIR, "standby")
     message_every: int = 3               # in standby, the "please hold" message every this many tracks
     # [weather]
-    weather_location: str = ""           # town for the DJ's weather, e.g. "Evesham" - blank = no weather
+    weather_location: str = ""           # town for the DJ's weather, e.g. "York" - blank = no weather
     weather_name: str = ""               # what the DJ calls it, if not the town's own name
     weather_from_hour: int = 7
     weather_to_hour: int = 22
@@ -82,7 +84,8 @@ SECTIONS = {
     "dj": {"enabled": "dj_enabled", "voice": "voice", "top10_chance": "top10_chance", "chart_chance": "chart_chance",
            "other_chance": "other_chance", "max_in_a_row": "max_in_a_row", "at_least_every": "at_least_every",
            "back_announce_chance": "back_announce_chance", "station_ident_chance": "station_ident_chance",
-           "talk_delay_seconds": "talk_delay_seconds", "duck_percent": "duck_percent", "voice_volume": "voice_volume"},
+           "talk_delay_seconds": "talk_delay_seconds", "duck_percent": "duck_percent", "voice_volume": "voice_volume",
+           "plan_ahead": "plan_ahead", "prerender": "prerender"},
     "sound": {"crossfade_seconds": "crossfade_seconds", "levelling": "levelling", "target_lufs": "target_lufs"},
     "charts": {"enabled": "charts_enabled", "contact_email": "contact_email"},
     "standby": {"check_seconds": "check_seconds", "folder": "standby_folder", "message_every": "message_every"},

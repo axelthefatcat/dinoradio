@@ -19,6 +19,12 @@ simple Alexa skill), a web browser, VLC, or any internet-radio player.
   Pi) talks over the start of a song with the music dipped underneath. For example: *"Here's
   a UK number one from nineteen eighty-four…"*. The DJ always introduces top 10 hits, often
   other chart hits, and now and then everything else.
+- **Voiced ahead of time.** The radio chooses the next 6 songs in advance and voices the DJ's
+  lines in the background, so nothing ever waits for the voice. Each song's introduction is
+  always worded the same way, so it's voiced once and kept (on the USB drive if there is one).
+  In quiet moments it voices the introductions for the biggest hits in your library ahead of time.
+  If a line isn't ready in time, that song plays without a link. That's how a slow,
+  high-quality voice works even on a Raspberry Pi 2.
 - **The weather, once an hour.** At a random time each hour (7am–10pm by default), the DJ reads
   the weather for your town before a song: what it's doing, the temperature, the wind, and whether
   rain's on the way. It comes from [Open-Meteo](https://open-meteo.com), with no account needed.
@@ -91,8 +97,8 @@ Open **`http://<the Pi>:8080`** in any browser on your network for the status pa
 | `dinoradio stream` | Show the stream address |
 
 All the settings are in `/etc/dinoradio/settings.toml`. That includes the mix percentages, how
-often the DJ talks, the DJ voice (`en_GB-cori-medium`, or the clearer but slower
-`en_GB-cori-high`, which needs a Pi 4 or 5; run `update-radio` after changing it), the weather town, crossfade length, levelling, Christmas songs (December only by default),
+often the DJ talks, the DJ voice (`en_GB-cori-medium`, or the clearer but much slower `en_GB-cori-high`; run
+`update-radio` after changing it), the weather town, crossfade length, levelling, Christmas songs (December only by default),
 genres to leave out, and the standby and backup options. `dinoradio settings` opens the file
 and offers to restart afterwards.
 
@@ -167,6 +173,7 @@ network.
 | Status says **STANDBY** | The Pi can't read the music. Check the NAS is on, then `dinoradio log`. It reconnects by itself, and you can force it with `sudo mount -a`. |
 | **NOT STREAMING** | Icecast isn't running: `sudo systemctl restart icecast2 dinoradio`. |
 | No DJ | `dinoradio status` shows why. The voice needs internet access once, during install. |
+| The DJ is quiet after changing the voice | Every line is voiced again in the new voice. `dinoradio status` shows progress under *Voiced ahead*; with `en_GB-cori-high` on a Pi 2, it takes two or three days to voice the introductions for the top 10 hits, and the DJ talks more and more as they fill in. |
 | Chart lookups paused | Wikipedia asked it to slow down. It waits and carries on by itself, from 10 minutes up to 6 hours. |
 | Swapped the USB stick's contents on a PC | Put it back in, then `sudo mount -a` (or reboot). |
 

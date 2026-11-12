@@ -1,5 +1,6 @@
 """Dino's Radio - the brain. Chooses the music, prepares the DJ, watches the NAS and feeds the audio engine."""
 import argparse
+import collections
 import datetime
 import itertools
 import json
@@ -14,13 +15,13 @@ import subprocess
 import threading
 import time
 
-from . import backup, config, webui
+from . import backup, config, names, voices, webui
 from .charts import Charts
 from .db import connect
 from .dj import DJ
 from .engine import Engine
 from .library import Library
-from .picker import Picker
+from .picker import Picker, _CHRISTMAS
 from .weather import Weather
 
 log = logging.getLogger("brain")
@@ -30,9 +31,13 @@ REMOUNT = "/usr/local/sbin/dinoradio-remount"
 AUDIO_EXT = (".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav", ".aac")
 
 
+def picker_christmas(title):
+    return bool(_CHRISTMAS.search(title or ""))
+
+
 class Item:
     def __init__(self, kind, path, row=None, voice=None, title="", artist="", script=""):
-        self.kind, self.path, self.row, self.voice = kind, path, row, voice
+        self.kind, self.path, self.row, self.voice = kind, path, row, list(voice or [])
         self.title, self.artist, self.script = title, artist, script
         self.rid = None
         self.tag = None
@@ -49,6 +54,15 @@ class Brain:
         self.charts = Charts(settings)
         self.picker = Picker(settings)
         self.dj = DJ(settings)
+        self.voices = voices.VoiceCache(settings, self.dj.model, self.stop)
+        self.voices.filler = self._lines_to_voice_ahead
+        self.plan = collections.deque()  # songs chosen in advance: {"row", "talk", "back", "ident"}
+        self.silent_for = 0             # songs since the DJ last actually spoke
+        self.weather_line = None        # (text, when) - waiting to be voiced / said
+        self.say_at = 0
+        self.ahead = {"top10": [0, 0], "chart": [0, 0]}     # intros voiced ahead: [ready, total]
+        self.ahead_checked = 0
+        self.ahead_idle_until = 0
         self.weather = Weather(settings)
         self.engine = Engine(settings)
         self.items = {}                 # rid -> Item, pushed and not finished
@@ -63,7 +77,7 @@ class Brain:
         self.nas_message = "Not checked yet"
         self.standby_voice = []
         self.recent_standby = []
-        self.say_next = None            # text to say over the next song (dinoradio say)
+        self.say_next = None            # text to say over the next song once it's voiced (dinoradio say)
         self.load_failures = 0
         self.started = time.time()
         self.history = []               # recent (time, artist, title, kind)
@@ -78,7 +92,9 @@ class Brain:
         connect()
         self.engine.run()
         threading.Thread(target=self._prepare_standby_voice, daemon=True, name="standby-voice").start()
-        for target in (self._health_loop, self._scan_loop, self._charts_loop, self._levelling_loop,
+        if self.dj.available:
+            threading.Thread(target=self._keep_running, args=(self.voices.run,), daemon=True, name="voices").start()
+        for target in (self._dj_loop, self._health_loop, self._scan_loop, self._charts_loop, self._levelling_loop,
                        self._backup_loop, self._control_server):
             threading.Thread(target=self._keep_running, args=(target,), daemon=True, name=target.__name__).start()
         if self.s.web_port:
@@ -119,7 +135,8 @@ class Brain:
             if item.started and item.voice and not item.voice_sent \
                     and time.time() - item.started >= self.s.talk_delay_seconds:
                 item.voice_sent = True
-                self.engine.say(item.voice)
+                for clip in item.voice:
+                    self.engine.say(clip)
         pending = [i for i in self.items.values() if i.started is None]
         if not pending and not self.preparing:
             self.preparing = True
@@ -133,7 +150,8 @@ class Brain:
             self.load_failures = 0
         self.history.insert(0, (time.strftime("%H:%M"), item.artist, item.title, item.kind))
         del self.history[20:]
-        log.info("on air: %s - %s%s", item.artist, item.title, "  [DJ]" if item.voice else "")
+        log.info("on air: %s - %s%s", item.artist, item.title,
+                 f'  [DJ: "{item.script}"]' if item.voice and item.kind == "song" else ("  [DJ]" if item.voice else ""))
 
     def _keep_running(self, job):
         """Runs a background job, and starts it again if it ever stops with an error."""
@@ -169,38 +187,119 @@ class Brain:
         finally:
             self.preparing = False
 
+    def _plan_songs(self):
+        """Keeps the next few songs chosen in advance, and asks for their DJ lines to be voiced -
+        the nearest first."""
+        while len(self.plan) < max(1, self.s.plan_ahead):
+            taken = [i.row for i in self.items.values() if i.row is not None] + [p["row"] for p in self.plan]
+            row = self.picker.pick(exclude_ids={r["id"] for r in taken},
+                                   exclude_artists={names.artist_key(r["artist"]) for r in taken},
+                                   exclude_keys={r["chart_key"] for r in taken})
+            if row is None:
+                break
+            row = dict(row)
+            prev = self.plan[-1]["row"] if self.plan else (
+                self.now.row if self.now is not None and self.now.kind == "song" else None)
+            entry = {"row": row, "talk": False, "back": None, "ident": None}
+            if self.dj.available:
+                entry["talk"] = self.dj.should_talk(Picker.group_of(row))
+                self.dj.note(entry["talk"])
+                if entry["talk"] and prev is not None and random.random() * 100 < self.s.back_announce_chance:
+                    entry["back"] = self.dj.back_announce(prev)
+                if entry["talk"] and random.random() * 100 < self.s.station_ident_chance:
+                    entry["ident"] = random.choice(self.dj.idents())
+            self.plan.append(entry)
+        if self.dj.available:
+            for n, e in enumerate(self.plan):
+                if e["talk"]:
+                    self.voices.want(self.dj.intro(e["row"]), 10 + n)
+                    for extra in (e["back"], e["ident"]):
+                        self.voices.want(extra, 40 + n)
+
     def _song_item(self):
-        exclude = {i.row["id"] for i in self.items.values() if i.row is not None}
-        row = self.picker.pick(exclude_ids=exclude)
-        if row is None:
+        self._plan_songs()
+        if not self.plan:
             self.nas_message = "No music in the library yet"
             return None
-        row = dict(row)
+        entry = self.plan.popleft()
+        row = entry["row"]
         # Measure its loudness now if there's time (a song is playing); otherwise it plays unlevelled this once
         if row["gain"] is None and self.s.levelling and not self.standby and self.now is not None:
             row["gain"] = self.lib.measure(row["id"], row["path"], timeout=120)
-        group = Picker.group_of(row)
-        back = self.back_on_air
-        said = self.say_next
-        weather = self.weather.take() if self.dj.available and not back and not said else None
-        voice, script = None, ""
-        if self.dj.available and (said or weather or self.dj.should_talk(group, forced=back)):
-            previous = self.now.row if self.now is not None and self.now.kind == "song" else None
-            if weather:
-                # the weather, then straight into the song (no "that was..." to keep it short)
-                script = weather + " " + self.dj.script(row, previous=None)
-            else:
-                script = said or self.dj.script(row, previous=previous, back_on_air=back)
-            voice = self.dj.speak(script)
-            self.dj.note(voice is not None)
-        else:
-            self.dj.note(False)
-        if back:
+        clips, words = self._link(entry)
+        self._plan_songs()
+        return Item("song", row["path"], row=row, voice=clips, title=row["title"], artist=row["artist"],
+                    script=" ".join(words))
+
+    def _link(self, entry):
+        """What the DJ says over this song: only lines whose voice clips are ready.
+        Anything not voiced in time is simply left out - the song plays without a link."""
+        if not self.dj.available:
+            return [], []
+        v = self.voices
+        clips, words = [], []
+
+        def add(text, kind=voices.KEEP):
+            p = v.ready(text, kind)
+            if p:
+                clips.append(p)
+                words.append(text)
+            return p
+
+        special = False
+        if self.back_on_air:
             self.back_on_air = False
-        if said:
-            self.say_next = None
-        return Item("song", row["path"], row=row, voice=voice, title=row["title"], artist=row["artist"],
-                    script=script)
+            special = any(add(t) for t in random.sample(self.dj.back_lines(), 2))
+        if self.say_next:
+            if add(self.say_next, voices.SHORT):
+                self.say_next, special = None, True
+            elif time.time() - self.say_at > 3600:
+                log.info("gave up waiting for the voice for: %s", self.say_next)
+                self.say_next = None
+        if self.weather_line and not special:
+            text, when = self.weather_line
+            if add(text, voices.SHORT):
+                self.weather_line, special = None, True
+            elif time.time() - when > 45 * 60:
+                log.info("the weather wasn't voiced in time - skipped this hour")
+                self.weather_line = None
+        intro = self.dj.intro(entry["row"])
+        if v.ready(intro) and (entry["talk"] or special or self.silent_for + 1 >= max(1, self.s.at_least_every)):
+            if not special:
+                for extra in (entry["back"], entry["ident"]):
+                    if extra:
+                        add(extra)
+            add(intro)
+        self.silent_for = 0 if clips else self.silent_for + 1
+        return clips, words
+
+    def _lines_to_voice_ahead(self):
+        """For quiet moments: introductions for the top 10 hits, then the other chart hits,
+        that haven't been voiced yet. Also keeps count for the status page."""
+        if not self.dj.available or time.time() < self.ahead_idle_until:
+            return []
+        rows = connect().execute(
+            """SELECT t.artist, t.title, t.chart_key, c.country, c.position, c.year
+               FROM tracks t JOIN charts c ON c.key = t.chart_key
+               WHERE c.position BETWEEN 1 AND 100 GROUP BY t.chart_key ORDER BY c.position, t.chart_key""").fetchall()
+        todo = {"top10": [], "chart": []}
+        counts = {"top10": [0, 0], "chart": [0, 0]}
+        christmas_ok = self.picker._christmas_allowed()
+        for r in rows:
+            if not christmas_ok and picker_christmas(r["title"]):
+                continue
+            g = "top10" if r["position"] <= 10 else "chart"
+            text = self.dj.intro(r)
+            counts[g][1] += 1
+            if self.voices.ready(text):
+                counts[g][0] += 1
+            else:
+                todo[g].append(text)
+        self.ahead = counts
+        out = todo["top10"][:5] + (todo["chart"][:5] if self.s.chart_chance > 0 else [])
+        if not out:
+            self.ahead_idle_until = time.time() + 600     # all done - look again in a while (new music)
+        return out
 
     def _standby_item(self):
         files = config.standby_tracks(self.s)
@@ -212,9 +311,9 @@ class Brain:
         self.recent_standby.append(path)
         del self.recent_standby[:-20]
         # the "please hold" message on the first standby track, then every few tracks
-        voice = None
+        voice = []
         if self.standby_voice and self.standby_count % max(1, self.s.message_every) == 0:
-            voice = random.choice(self.standby_voice)
+            voice = [random.choice(self.standby_voice)]
         self.standby_count += 1
         title, artist = os.path.splitext(os.path.basename(path))[0], self.s.name
         row = connect().execute("SELECT artist, title FROM tracks WHERE path LIKE ? LIMIT 1",
@@ -225,9 +324,35 @@ class Brain:
                     script="(standby message)" if voice else "")
 
     def _prepare_standby_voice(self):
-        self.standby_voice = self.dj.standby_messages()
-        if self.standby_voice:
-            log.info("standby messages ready (%d)", len(self.standby_voice))
+        """The 'please hold' messages are voiced first and kept, so they work without the NAS."""
+        if not self.dj.available:
+            return
+        lines = self.dj.standby_lines()
+        # the first apology straight away; the rest after the next songs' introductions
+        for n, t in enumerate(lines):
+            self.voices.want(t, 0 if n == 0 else 45, voices.STANDBY)
+        for t in self.dj.back_lines():
+            self.voices.want(t, 45)
+        for t in self.dj.idents():
+            self.voices.want(t, 50)
+        files = []
+        for t in lines:
+            p = self.voices.wait_for(t, voices.STANDBY, 3 * 3600)
+            if p:
+                files.append(p)
+                self.standby_voice = list(files)
+        if files:
+            log.info("standby messages ready (%d)", len(files))
+
+    def _dj_loop(self):
+        """Fetches the weather when it's due, so it can be voiced before it's read out."""
+        while not self.stop.is_set():
+            if self.dj.available and not self.standby and self.weather_line is None:
+                line = self.weather.take()
+                if line:
+                    self.weather_line = (line, time.time())
+                    self.voices.want(line, 1, voices.SHORT)
+            self.stop.wait(30)
 
     # ================================================================== the NAS
 
@@ -318,7 +443,7 @@ class Brain:
                     self.lib.message = f"Scan stopped: {e}"
                     log.warning(self.lib.message)
                 last_quick = time.time()
-                self.dj.tidy()
+                self.voices.tidy()
             self.stop.wait(20)
 
     rescan_requested = None
@@ -390,8 +515,12 @@ class Brain:
             "library": self.lib.message,
             "levelling": self.lib.counts(),
             "charts": {**self.charts.counts(), "message": self.charts.message},
-            "dj": ("on - " + self.dj.message) if self.dj.available else
+            "dj": ("on - " + self.voices.status()) if self.dj.available else
                   ("off" if not self.s.dj_enabled else "voice not installed"),
+            "voiced_ahead": self._ahead_text() if self.dj.available else None,
+            "coming_up": [{"artist": p["row"]["artist"], "title": p["row"]["title"],
+                           "dj": "ready" if p["talk"] and self.voices.ready(self.dj.intro(p["row"]))
+                           else ("waiting" if p["talk"] else None)} for p in list(self.plan)],
             "standby_tracks": len(config.standby_tracks(self.s)),
             "standby_messages": len(self.standby_voice),
             "backup": self.backup_message,
@@ -400,6 +529,12 @@ class Brain:
             "stream": f"http://<this pi>:{self.s.icecast_port}/{self.s.stream_mount}",
             "uptime_minutes": round((time.time() - self.started) / 60),
         }
+
+    def _ahead_text(self):
+        t, c = self.ahead["top10"], self.ahead["chart"]
+        if not t[1] and not c[1]:
+            return "Counting..."
+        return f"Top 10 hits {t[0]} of {t[1]}, other chart hits {c[0]} of {c[1]}"
 
     def _write_status(self):
         try:
@@ -427,12 +562,16 @@ class Brain:
             if not self.weather.enabled:
                 return "No weather location is set - add one with: dinoradio settings  ([weather] location)"
             self.weather.next_due = datetime.datetime.now()
-            return "The DJ will read the weather over the next song to be queued (within a few minutes)."
+            return ("Getting the weather now. The DJ reads it over the first song after it's been voiced "
+                    "(a few minutes - longer with a high-quality voice).")
         if cmd == "say":
             if not self.dj.available:
                 return "The DJ voice isn't available."
             self.say_next = arg.strip()
-            return "The DJ will say that over the next song to be queued (within a few minutes)."
+            self.say_at = time.time()
+            self.voices.want(self.say_next, 0, voices.SHORT)
+            return ("The DJ will say that over the first song after it's been voiced "
+                    "(a few minutes - longer with a high-quality voice).")
         if cmd == "standby":
             self.standby_test = arg.strip() == "on"
             return "Standby test on - it switches over within a few seconds." if self.standby_test \

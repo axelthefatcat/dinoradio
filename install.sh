@@ -51,7 +51,7 @@ if [ ! -f "$ETC/settings.toml" ] || [ $RECONFIGURE -eq 1 ]; then
   read -r -s -p "   NAS password for $NASUSER: " NASPASS </dev/tty; echo
   SMBVER=$(ask "SMB version (3.0 suits Synology; try 2.1 or 1.0 for old NASes)" "3.0")
   EMAIL=$(ask "Contact email Wikipedia sees with chart lookups (blank = none)" "")
-  WEATHER=$(ask "Town for the DJ's hourly weather, e.g. Evesham (blank = no weather)" "")
+  WEATHER=$(ask "Town for the DJ's hourly weather, e.g. York (blank = no weather)" "")
   CONFIGURE=1
 else
   CONFIGURE=0
@@ -305,7 +305,7 @@ if ! grep -q '^\[web\]' "$ETC/settings.toml"; then
 fi
 if ! grep -q '^\[weather\]' "$ETC/settings.toml"; then
   say "Weather"
-  WEATHER=$(ask "Town for the DJ's hourly weather, e.g. Evesham (blank = no weather)" "")
+  WEATHER=$(ask "Town for the DJ's hourly weather, e.g. York (blank = no weather)" "")
   { echo; sed -n '/^\[weather\]/,/^to_hour/p' "$HERE/settings.template.toml" | sed "s|@WEATHER@|${WEATHER//|/}|"; } \
     >> "$ETC/settings.toml"
   ok "Weather: ${WEATHER:-off}"
