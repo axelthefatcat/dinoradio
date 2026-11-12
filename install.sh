@@ -197,17 +197,22 @@ fi
 if [ $CONFIGURE -eq 1 ] || [ $USB -eq 1 ] || ! grep -q '^\[backup\]' "$ETC/settings.toml" 2>/dev/null; then
   say "Backup drive"
   # USB drives with a filesystem on them: "path|fstype|size|label|uuid"
-  mapfile -t DRIVES < <(lsblk -J -o PATH,TRAN,FSTYPE,SIZE,LABEL,UUID,TYPE 2>/dev/null | python3 -c '
+  mapfile -t DRIVES < <(lsblk -J -o PATH,TRAN,FSTYPE,SIZE,LABEL,UUID,PARTUUID,TYPE,MOUNTPOINT 2>/dev/null | python3 -c '
 import json, sys
+# USB drives: marked "usb", or any /dev/sd* disk (the SD card is mmcblk*); never the system disk
 def walk(devs, usb=False):
     for d in devs:
-        u = usb or d.get("tran") == "usb"
-        if u and d.get("fstype") and d.get("uuid") and d.get("type") in ("part", "disk"):
-            print("|".join(str(d.get(k) or "") for k in ("path", "fstype", "size", "label", "uuid")))
-        walk(d.get("children", []), u)
+        u = usb or d.get("tran") == "usb" or (d.get("path") or "").startswith("/dev/sd")
+        ident = d.get("uuid") or d.get("partuuid")
+        if u and d.get("fstype") and d.get("fstype") != "swap" and ident and d.get("type") in ("part", "disk") \
+                and d.get("mountpoint") not in ("/", "/boot", "/boot/firmware"):
+            idk = "UUID=" + d["uuid"] if d.get("uuid") else "PARTUUID=" + d["partuuid"]
+            print("|".join(str(x or "") for x in (d.get("path"), d.get("fstype"), d.get("size"), d.get("label"), idk)))
+        walk(d.get("children") or [], u)
 walk(json.load(sys.stdin).get("blockdevices", []))' || true)
   if [ ${#DRIVES[@]} -eq 0 ]; then
     warn "No USB drive found - backups will be kept on the SD card for now."
+    lsblk -o NAME,TRAN,FSTYPE,SIZE,UUID,MOUNTPOINT 2>/dev/null | sed 's/^/      /' || true
     warn "Plug one in later and run:  sudo bash install.sh --usb"
   else
     echo "   USB drives found:"
@@ -224,7 +229,7 @@ walk(json.load(sys.stdin).get("blockdevices", []))' || true)
       mkdir -p "$BACKUP_MNT"
       umount "$DEV" 2>/dev/null || true
       sed -i -e "\#[[:space:]]${BACKUP_MNT}[[:space:]]#d" -e "/^# Dino's Radio backup drive/d" /etc/fstab
-      printf "# Dino's Radio backup drive\nUUID=%s %s %s %s,nofail,x-systemd.device-timeout=10s 0 0\n" \
+      printf "# Dino's Radio backup drive\n%s %s %s %s,nofail,x-systemd.device-timeout=10s 0 0\n" \
         "$DUUID" "$BACKUP_MNT" "$FST" "$BOPTS" >> /etc/fstab
       systemctl daemon-reload
       if mount "$BACKUP_MNT" 2>/tmp/usb.err; then
